@@ -42,6 +42,8 @@ func LoadConfiguration(pathJsonFile string) error {
 
 			if err == nil {
 				http.Handle(tarjet.Route, httputil.NewSingleHostReverseProxy(destinationHost))
+			} else {
+				break
 			}
 		}
 	}
