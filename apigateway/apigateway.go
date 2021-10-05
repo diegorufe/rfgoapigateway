@@ -21,19 +21,39 @@ type Configuration struct {
 	Targets []Target // array de tarjets a interceptar y a redireccionar
 }
 
+// Respuesta del middleware
+type ResponseMiddleware struct {
+	Err    error
+	Status int
+}
+
 // middleware función de punto intermedio para añadir función de seguridad entre medias
-func middleware(next http.Handler) http.Handler {
+func middleware(path string, next http.Handler, fnMiddleware func(route string, w http.ResponseWriter, r *http.Request) ResponseMiddleware) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// TODO auth method
 		// For test error
 		//http.Error(w, "Unautoriced", 401)
 		// return
+		// Test for add header
+		// r.Header.Add("TEST", "This is a test header")
+		// TODO add user authentication if needed in this part or in auth method
+
+		if fnMiddleware != nil {
+			responseMiddleware := fnMiddleware(path, w, r)
+
+			if responseMiddleware.Err != nil {
+				http.Error(w, responseMiddleware.Err.Error(), responseMiddleware.Status)
+				return
+			}
+
+		}
+
 		next.ServeHTTP(w, r)
 	})
 }
 
 // LoadConfiguration : Método para cargar la configuración de las rutas a internceptar y host de destino a redirecionar
-func LoadConfiguration(pathJsonFile string) error {
+func LoadConfiguration(pathJsonFile string, fnMiddleware func(route string, w http.ResponseWriter, r *http.Request) ResponseMiddleware) error {
 	// Cargamos la configuración de las url a interceptar y el host de destino
 	file, _ := os.Open(pathJsonFile)
 	defer file.Close()
@@ -52,10 +72,9 @@ func LoadConfiguration(pathJsonFile string) error {
 			destinationHost, err := url.Parse(tarjet.DestinationHost)
 
 			if err == nil {
-				http.Handle(tarjet.Route, middleware(httputil.NewSingleHostReverseProxy(destinationHost)))
-				// http.Handle(tarjet.Route, httputil.NewSingleHostReverseProxy(destinationHost))
+				http.Handle(tarjet.Route, middleware(tarjet.Route, httputil.NewSingleHostReverseProxy(destinationHost), fnMiddleware))
 			} else {
-				break
+				log.Fatal(err.Error())
 			}
 		}
 	}
@@ -64,9 +83,9 @@ func LoadConfiguration(pathJsonFile string) error {
 }
 
 // Método para arrancar el api gateway cargando la configuración y esuchando en el puerto indicado
-func Start(pathJsonFile string, port int) {
+func Start(pathJsonFile string, port int, fnMiddleware func(route string, w http.ResponseWriter, r *http.Request) ResponseMiddleware) {
 	// Cargamos configuración
-	LoadConfiguration(pathJsonFile)
+	LoadConfiguration(pathJsonFile, fnMiddleware)
 
 	// Inicamos el servidor
 	log.Fatal(http.ListenAndServe(":"+fmt.Sprint(port), nil))
